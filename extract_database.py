@@ -9,7 +9,7 @@ import pandas as pd
 from extraction_utils import *
 from extract_sql import *
 
-auth.authenticate_user()
+# auth.authenticate_user()
 
 
 def extract_mimic(args):
