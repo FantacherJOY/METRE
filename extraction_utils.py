@@ -74,7 +74,20 @@ def process_query_results(df, fill_df):
                 apply aggregation function, shape e.g. (2697900, 44), with row index same as fill_df
                 but column becomes a multiindex, e.g. level 0: so2, level 1: mean, count
     """
-    df = df.groupby(ID_COLS + ['hours_in']).agg(['mean', 'count'])
+    # --- START OF FIX ---
+    # 1. Define the columns we are grouping by
+    group_cols = ID_COLS + ['hours_in']
+    # 2. Get a list of all *other* columns (the data columns)
+    data_cols = [col for col in df.columns if col not in group_cols]
+    # 3. Loop through each data column and force it to be numeric
+    # This will turn 'VEN.' and other strings into NaN
+    for col in data_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    # 4. Now, run your original aggregation. It will work.
+    df = df.groupby(group_cols).agg(['mean', 'count'])
+    # --- END OF FIX ---
+    
+    # df = df.groupby(ID_COLS + ['hours_in']).agg(['mean', 'count'])
     df.index = df.index.set_levels(df.index.levels[1].astype(int), level=1)
     df = df.reindex(fill_df.index)
     return df
