@@ -374,19 +374,69 @@ def query_cbc_mimic(client, subject_to_keep):
     return cbc
 
 
+# def query_culture_mimic(client, subject_to_keep):
+#     query = """
+#         SELECT b.subject_id, b.charttime, b.specimen, b.screen, b.positive_culture, b.has_sensitivity, 
+#         i.hadm_id, i.stay_id, i.icu_intime
+#         FROM physionet-data.mimiciv_3_1_derived.culture b
+#         INNER JOIN physionet-data.mimiciv_3_1_derived.icustay_detail i ON i.subject_id = b.subject_id
+#         where b.subject_id in ({icuids})
+#         and b.charttime between i.icu_intime and i.icu_outtime
+
+#         """.format(icuids=','.join(subject_to_keep))
+#     culture = gcp2df(client, query)
+#     return culture
 def query_culture_mimic(client, subject_to_keep):
     query = """
-        SELECT b.subject_id, b.charttime, b.specimen, b.screen, b.positive_culture, b.has_sensitivity, 
-        i.hadm_id, i.stay_id, i.icu_intime
-        FROM physionet-data.mimiciv_3_1_derived.culture b
-        INNER JOIN physionet-data.mimiciv_3_1_derived.icustay_detail i ON i.subject_id = b.subject_id
-        where b.subject_id in ({icuids})
-        and b.charttime between i.icu_intime and i.icu_outtime
-
+        WITH mb AS (
+            SELECT
+                m.subject_id,
+                m.charttime,
+                m.spec_type_desc AS specimen,
+                -- 1 if organism is not null, 0 otherwise
+                CASE WHEN m.org_name IS NOT NULL THEN 1 ELSE 0 END AS positive_culture,
+                -- Check if a sensitivity test exists for this specimen
+                MAX(CASE WHEN m.ab_name IS NOT NULL OR m.interpretation IS NOT NULL THEN 1 ELSE 0 END) OVER (
+                    PARTITION BY m.micro_specimen_id
+                ) AS has_sensitivity,
+                -- 'screen' concept is deprecated/unclear in new version, setting to 0
+                0 AS screen,
+                -- Rank by charttime to deduplicate
+                ROW_NUMBER() OVER(
+                    PARTITION BY m.subject_id, m.charttime, m.spec_type_desc 
+                    ORDER BY m.micro_specimen_id, m.org_name
+                ) as rn
+            FROM
+                `physionet-data.mimiciv_3_1_hosp.microbiologyevents` m
+            WHERE
+                m.subject_id IN ({icuids})
+                AND (m.test_name = 'ORGANISM IDENTIFIED' OR m.test_name = 'GRAM STAIN' OR m.org_name IS NOT NULL)
+        ),
+        -- Add icustay details
+        culture_with_stay AS (
+            SELECT
+                b.subject_id,
+                b.charttime,
+                b.specimen,
+                b.screen,
+                b.positive_culture,
+                b.has_sensitivity,
+                i.hadm_id,
+                i.stay_id,
+                i.icu_intime
+            FROM
+                mb b
+            INNER JOIN
+                `physionet-data.mimiciv_3_1_derived.icustay_detail` i ON i.subject_id = b.subject_id
+            WHERE
+                b.rn = 1 -- Get unique row
+                AND b.charttime BETWEEN i.icu_intime AND i.icu_outtime
+                AND b.subject_id IN ({icuids})
+        )
+        SELECT * FROM culture_with_stay
         """.format(icuids=','.join(subject_to_keep))
     culture = gcp2df(client, query)
     return culture
-
 
 def query_enzyme_mimic(client, subject_to_keep):
     query = """
@@ -441,6 +491,65 @@ def query_uo_mimic(client, icuids_to_keep):
     uo = gcp2df(client, query)
     return uo
 
+# def query_uo_mimic(client, icuids_to_keep):
+#     query = """
+#         SELECT g.stay_id, g.charttime, g.urineoutput AS uo, i.icu_intime, i.subject_id, i.hadm_id
+#         FROM physionet-data.mimiciv_3_1_derived.urine_output g 
+#         INNER JOIN physionet-data.mimiciv_3_1_derived.icustay_detail i ON i.stay_id = g.stay_id
+#         where g.stay_id in ({icuids})
+#         and g.charttime between i.icu_intime and i.icu_outtime
+
+#         """.format(icuids=','.join(icuids_to_keep))
+#     uo = gcp2df(client, query)
+#     return uo
+
+# def query_uo_mimic(client, icuids_to_keep):
+#     query = """
+#     WITH uo_raw AS (
+#         SELECT
+#             stay_id,
+#             charttime,
+#             -- Sum up all urine output itemids
+#             SUM(value) AS uo
+#         FROM
+#             `physionet-data.mimiciv_3_1_icu.outputevents`
+#         WHERE
+#             itemid IN (
+#                 226559, -- "Urine Output"
+#                 226560, -- "Urine Bag"
+#                 226561, -- "Urine Catheter"
+#                 226563, -- "Urine Discharged"
+#                 226564, -- "Urine Flow"
+#                 226566, -- "Urine Manual"
+#                 226567, -- "Urine Micturated"
+#                 227488, -- "Urine Catheter Output"
+#                 227489  -- "Urine Output"
+#             )
+#             AND stay_id IN ({icuids})
+#         GROUP BY
+#             stay_id, charttime
+#     )
+#     SELECT
+#         g.stay_id,
+#         g.charttime,
+#         w.weight,
+#         g.uo,
+#         i.icu_intime,
+#         i.subject_id,
+#         i.hadm_id
+#     FROM
+#         uo_raw g
+#     INNER JOIN
+#         `physionet-data.mimiciv_3_1_derived.icustay_detail` i ON i.stay_id = g.stay_id
+#     LEFT JOIN
+#         `physionet-data.mimiciv_3_1_derived.weightfirstday` w ON g.stay_id = w.stay_id
+#     WHERE
+#         g.stay_id IN ({icuids})
+#         AND g.charttime BETWEEN i.icu_intime AND i.icu_outtime
+#     """.format(icuids=','.join(icuids_to_keep))
+#     uo = gcp2df(client, query)
+#     return uo
+
 
 def query_chart_lab_mimic(client, icuids_to_keep, chart_items, lab_items):
     query = \
@@ -483,40 +592,68 @@ def query_vent_mimic(client, icuids_to_keep):
     return vent_data
 
 
+# def query_antibiotics_mimic(client, icuids_to_keep):
+#     query = """
+#         select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.antibiotic, 
+#         v.route, i.icu_intime, i.icu_outtime 
+#         FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
+#         INNER JOIN physionet-data.mimiciv_3_1_derived.antibiotic v ON i.stay_id = v.stay_id
+#         where v.stay_id in ({icuids})
+#         and v.starttime < i.icu_outtime 
+#         and v.stoptime > i.icu_intime 
+#         ;
+#         """.format(icuids=','.join(icuids_to_keep))
+
+#     antibiotics = gcp2df(client, query)
+#     return antibiotics
+
 def query_antibiotics_mimic(client, icuids_to_keep):
     query = """
-        select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.antibiotic, 
+        select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.drug as antibiotic, 
         v.route, i.icu_intime, i.icu_outtime 
         FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-        INNER JOIN physionet-data.mimiciv_3_1_derived.antibiotic v ON i.stay_id = v.stay_id
+        INNER JOIN physionet-data.mimiciv_3_1_hosp.prescriptions v ON i.stay_id = v.stay_id
         where v.stay_id in ({icuids})
         and v.starttime < i.icu_outtime 
         and v.stoptime > i.icu_intime 
+        -- Filter for antibiotics (ATC code J01)
+        AND v.atc_code LIKE 'J01%'
         ;
         """.format(icuids=','.join(icuids_to_keep))
 
     antibiotics = gcp2df(client, query)
     return antibiotics
 
+# def query_vasoactive_mimic(client, icuids_to_keep, vasoactive_drugs):
+#     query = """
+#             select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime, 
+#             FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
+#             INNER JOIN physionet-data.mimiciv_3_1_derived.vasoactive_agent v ON i.stay_id = v.stay_id
+#             where v.stay_id in ({icuids})
+#             and v.starttime  < i.icu_outtime
+#             and v.endtime > i.icu_intime 
+#             and v.{drug_name} is not null
+#             ;
+#             """.format(icuids=','.join(icuids_to_keep), drug_name=vasoactive_drugs)
 
+#     # job_config = bigquery.QueryJobConfig(query_parameters=[
+#     #     bigquery.ScalarQueryParameter("NAME", "STRING", c)])
+
+#     new_data = gcp2df(client, query)
+#     return new_data
 def query_vasoactive_mimic(client, icuids_to_keep, vasoactive_drugs):
     query = """
-            select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime, 
+            select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime
             FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-            INNER JOIN physionet-data.mimiciv_3_1_derived.vasoactive_agent v ON i.stay_id = v.stay_id
+            INNER JOIN physionet-data.mimiciv_3_1_derived.{drug_name} v ON i.stay_id = v.stay_id
             where v.stay_id in ({icuids})
             and v.starttime  < i.icu_outtime
             and v.endtime > i.icu_intime 
-            and v.{drug_name} is not null
             ;
             """.format(icuids=','.join(icuids_to_keep), drug_name=vasoactive_drugs)
 
-    # job_config = bigquery.QueryJobConfig(query_parameters=[
-    #     bigquery.ScalarQueryParameter("NAME", "STRING", c)])
-
     new_data = gcp2df(client, query)
     return new_data
-
 
 def query_heparin_mimic(client, subject_to_keep):
     query = \

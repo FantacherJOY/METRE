@@ -150,7 +150,22 @@ def extract_mimic(args):
     chart_lab = chart_lab.join(var_map, on='itemid').set_index(['LEVEL1', 'LEVEL2'], append=True)
     chart_lab.index.names = ['stay_id', chart_lab.index.names[1], chart_lab.index.names[2], chart_lab.index.names[3]]
     group_item_cols = ['LEVEL2']
-    chart_lab = chart_lab.groupby(ID_COLS + group_item_cols + ['hours_in']).agg(['mean', 'count'])
+
+    # --- START OF FIX ---
+    # 1. Define the columns we are grouping by
+    group_cols = ID_COLS + group_item_cols + ['hours_in']
+    # 2. Get a list of all *other* columns (the data columns)
+    data_cols = [col for col in chart_lab.columns if col not in group_cols]
+    # 3. Loop through each data column and force it to be numeric
+    # This will turn 'VEN.' and other strings into NaN
+    for col in data_cols:
+        chart_lab[col] = pd.to_numeric(chart_lab[col], errors='coerce')
+    # 4. Now, run your original aggregation. It will work.
+    chart_lab = chart_lab.groupby(group_cols).agg(['mean', 'count'])
+    # --- END OF FIX ---
+
+
+    # chart_lab = chart_lab.groupby(ID_COLS + group_item_cols + ['hours_in']).agg(['mean', 'count'])
 
     chart_lab.columns = chart_lab.columns.droplevel(0)
     chart_lab.columns.names = ['Aggregation Function']

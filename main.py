@@ -10,8 +10,10 @@ if __name__ == '__main__':
     parser.add_argument("--age_min", type=int, default=18, help='Min patient age to query')
     parser.add_argument("--los_min", type=int, default=24, help='Min ICU LOS in hour')
     parser.add_argument("--los_max", type=int, default=240, help='Max ICU LOS in hour')
-    parser.add_argument("--patient_group", type=str, default='Generic', choices=['Generic', 'sepsis_3', 'ARF', 'shock', 'COPD', 'CHF'],
-                        help='Specific groups to extract')
+    # parser.add_argument("--patient_group", type=str, default='Generic', choices=['Generic', 'sepsis_3', 'ARF', 'shock', 'COPD', 'CHF'],
+    #                     help='Specific groups to extract')
+    parser.add_argument("--patient_group", type=str, default='ARF', choices=['Generic','ARF'],
+                    help='Specific groups to extract')
     parser.add_argument("--custom_id", action='store_true', default=False, help="Whether use custom stay ids")
     parser.add_argument('--customid_dir', required='--custom_id' in sys.argv, help="Specify custom id dir")
     parser.add_argument("--exit_point", type=str, default='All', choices=['All', 'Raw', 'Outlier_removal', 'Impute'],
