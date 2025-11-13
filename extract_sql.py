@@ -592,68 +592,68 @@ def query_vent_mimic(client, icuids_to_keep):
     return vent_data
 
 
-# def query_antibiotics_mimic(client, icuids_to_keep):
-#     query = """
-#         select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.antibiotic, 
-#         v.route, i.icu_intime, i.icu_outtime 
-#         FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-#         INNER JOIN physionet-data.mimiciv_3_1_derived.antibiotic v ON i.stay_id = v.stay_id
-#         where v.stay_id in ({icuids})
-#         and v.starttime < i.icu_outtime 
-#         and v.stoptime > i.icu_intime 
-#         ;
-#         """.format(icuids=','.join(icuids_to_keep))
-
-#     antibiotics = gcp2df(client, query)
-#     return antibiotics
-
 def query_antibiotics_mimic(client, icuids_to_keep):
     query = """
-        select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.drug as antibiotic, 
+        select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.antibiotic, 
         v.route, i.icu_intime, i.icu_outtime 
         FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-        INNER JOIN physionet-data.mimiciv_3_1_hosp.prescriptions v ON i.stay_id = v.stay_id
+        INNER JOIN physionet-data.mimiciv_3_1_derived.antibiotic v ON i.stay_id = v.stay_id
         where v.stay_id in ({icuids})
         and v.starttime < i.icu_outtime 
         and v.stoptime > i.icu_intime 
-        -- Filter for antibiotics (ATC code J01)
-        AND v.atc_code LIKE 'J01%'
         ;
         """.format(icuids=','.join(icuids_to_keep))
 
     antibiotics = gcp2df(client, query)
     return antibiotics
 
-# def query_vasoactive_mimic(client, icuids_to_keep, vasoactive_drugs):
+# def query_antibiotics_mimic(client, icuids_to_keep):
 #     query = """
-#             select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime, 
-#             FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-#             INNER JOIN physionet-data.mimiciv_3_1_derived.vasoactive_agent v ON i.stay_id = v.stay_id
-#             where v.stay_id in ({icuids})
-#             and v.starttime  < i.icu_outtime
-#             and v.endtime > i.icu_intime 
-#             and v.{drug_name} is not null
-#             ;
-#             """.format(icuids=','.join(icuids_to_keep), drug_name=vasoactive_drugs)
+#         select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.stoptime as endtime, v.drug as antibiotic, 
+#         v.route, i.icu_intime, i.icu_outtime 
+#         FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
+#         INNER JOIN physionet-data.mimiciv_3_1_hosp.prescriptions v ON i.stay_id = v.stay_id
+#         where v.stay_id in ({icuids})
+#         and v.starttime < i.icu_outtime 
+#         and v.stoptime > i.icu_intime 
+#         -- Filter for antibiotics (ATC code J01)
+#         AND v.atc_code LIKE 'J01%'
+#         ;
+#         """.format(icuids=','.join(icuids_to_keep))
 
-#     # job_config = bigquery.QueryJobConfig(query_parameters=[
-#     #     bigquery.ScalarQueryParameter("NAME", "STRING", c)])
+#     antibiotics = gcp2df(client, query)
+#     return antibiotics
 
-#     new_data = gcp2df(client, query)
-#     return new_data
 def query_vasoactive_mimic(client, icuids_to_keep, vasoactive_drugs):
     query = """
-            select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime
+            select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime, 
             FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
-            INNER JOIN physionet-data.mimiciv_3_1_derived.{drug_name} v ON i.stay_id = v.stay_id
+            INNER JOIN physionet-data.mimiciv_3_1_derived.vasoactive_agent v ON i.stay_id = v.stay_id
             where v.stay_id in ({icuids})
             and v.starttime  < i.icu_outtime
             and v.endtime > i.icu_intime 
+            and v.{drug_name} is not null
             ;
             """.format(icuids=','.join(icuids_to_keep), drug_name=vasoactive_drugs)
 
+    # job_config = bigquery.QueryJobConfig(query_parameters=[
+    #     bigquery.ScalarQueryParameter("NAME", "STRING", c)])
+
     new_data = gcp2df(client, query)
     return new_data
+# def query_vasoactive_mimic(client, icuids_to_keep, vasoactive_drugs):
+#     query = """
+#             select i.subject_id, i.hadm_id, v.stay_id, v.starttime, v.endtime, i.icu_intime, i.icu_outtime
+#             FROM physionet-data.mimiciv_3_1_derived.icustay_detail i
+#             INNER JOIN physionet-data.mimiciv_3_1_derived.{drug_name} v ON i.stay_id = v.stay_id
+#             where v.stay_id in ({icuids})
+#             and v.starttime  < i.icu_outtime
+#             and v.endtime > i.icu_intime 
+#             ;
+#             """.format(icuids=','.join(icuids_to_keep), drug_name=vasoactive_drugs)
+
+#     new_data = gcp2df(client, query)
+#     return new_data
 
 def query_heparin_mimic(client, subject_to_keep):
     query = \
